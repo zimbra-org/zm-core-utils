@@ -39,6 +39,7 @@ my $DF = '/bin/df -k';
 my $HEADING = 'timestamp, path, disk, disk_use, disk_space, disk_pct_used';
 
 my @DF_EXCLUDES = split(/:/, getLocalConfig("zmstat_df_excludes") || "");
+my $DF_EXCLUDE_PATTERN = getLocalConfig("zmdisklog_exclude_pattern") || "";
 
 sub get_df_stat() {
     open(DF, "$DF |") || die "Can't open $DF: $!";
@@ -135,8 +136,16 @@ while (1) {
         for my $vol ( @DF_EXCLUDES ) {
             $skip_vol = 1 if (($vol eq $mnt) || ($vol eq $dev));
         }
-        if (($skip_vol == 1) && (($pct >= $DISK_CRIT_THRESHOLD) || ($pct >= $DISK_WARN_THRESHOLD))) {
-            Zimbra::Mon::Logger::Log( "info", "Disk warning: ${hostname}: $mnt on device $dev at $pct%");
+        if ($DF_EXCLUDE_PATTERN ne "") {
+            my $matched = eval { $mnt =~ m#$DF_EXCLUDE_PATTERN# };
+            if ($@) {
+                Zimbra::Mon::Logger::Log("warn", "Invalid zmdisklog_exclude_pattern: $@");
+            } elsif ($matched) {
+                $skip_vol = 1;
+            }
+        }
+        if ($skip_vol == 1) {
+            next;
         } elsif ($pct >= $DISK_CRIT_THRESHOLD) {
             Zimbra::Mon::Logger::Log( "crit", "Disk warning: ${hostname}: $mnt on device $dev at $pct%"); 
     	} elsif ($pct >= $DISK_WARN_THRESHOLD) {
